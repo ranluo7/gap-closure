@@ -1,0 +1,88 @@
+####### extract gap sequences with best alignment set of chains provided by QUAST flanking a gap region 
+filter the gap seq with 'N' and seq less than 0,form a info csv and  output gap seq and flank seq at the same time
+#GRC 1-1000
+import re
+import sys
+import argparse
+parser = argparse.ArgumentParser(description='manual to this script')
+parser.add_argument('--assembly', type=str, default = None)
+parser.add_argument('--bed', type=str, default = None)
+parser.add_argument('--flank', type=int, default = 0)
+parser.add_argument('--tag', type=str, default = None)
+parser.add_argument('--gap_out', type=str, default = None)
+parser.add_argument('--flank_out', type=str, default = None)
+parser.add_argument('--gap_sum', type=str, default ='log')
+args = parser.parse_args()
+
+assembly=args.assembly
+bed=args.bed
+flank=args.flank
+gap_out=args.gap_out
+flank_out=args.flank_out
+log=args.gap_sum
+tag=args.tag
+
+f_assembly = open(assembly,'r').read()
+f_gaploc = open(bed,'r')
+f_gap = open(gap_out,'w')
+f_flank = open(flank_out,'w')
+f_log = open(log,'w')
+
+chrs = []
+for line in f_gaploc:
+	chr1 = line.split('\t')[3]
+	chrs.append(chr1) 
+
+
+contig = {}
+contigs = re.split(">",f_assembly)
+for line in contigs:
+	line.strip()
+	ss = re.split("\n",line)
+	match = re.match("\S+",ss[0])
+	if match:
+		title = ss[0]
+		chr2 = re.search("\S+",title).group()
+		if chr2 in chrs:
+			contig[chr2] = ''.join(ss[1:])
+region_info={'CHM13':'NA', 'HX1':'EA','AK1':'EA','NA19240':'AFR','NA12878':'EUR','HG00514':'EA','HG00733':'AMR','HG01352':'AMR','NA19434':'AFR','HG02059':'SA','HG03486':'AFR','HG02818':'AFR','HG03807':'SA','ASM101398v1':'EUR','NA24385':'EUR','ASM185674v1':'EA','YRI':'AFR','NA127878':'EUR','ASM311289v1':'AFR','ASM311281v1':
+'AFR','ASM311285v1':'AFR','ASM311317v1':'AMR','ASM311287v1':'AMR','ASM311295v1':'EA','ASM311311v1':'EA','ASM311283v1':'EA','ASM311323v1':'EUR','ASM311321v1':'EUR','ASM311293v1':'EUR','ASM311291v1':'SA','ASM311297v1':'SA','HuRef':'EUR'}
+
+f_gaploc.seek(0)
+for line in f_gaploc:
+	line = line.strip()
+	#print(line)
+	gap_pos = line.split('\t')[2]
+	gap1=gap_pos.split(',')[0]
+	gap2=gap_pos.split(',')[1]
+	refid = line.split('\t')[1]
+	queryid = line.split('\t')[3]
+	gap_type = line.split('\t')[-1]
+	if int(line.split('\t')[4].split(',')[5])==1:
+		start = int(line.split('\t')[4].split(',')[3]) 
+		end = int(line.split('\t')[5].split(',')[2])
+	elif int(line.split('\t')[4].split(',')[5])==0:
+		end = int(line.split('\t')[4].split(',')[3])
+		start = int(line.split('\t')[5].split(',')[2])
+	seq_length = end-start-1
+	gapid = line.split('\t')[0]
+	if seq_length >=1:
+		sequence = contig[queryid][int(start):int(end)-1]
+		if 'N' in sequence or 'n' in sequence:
+			f_log.write(gapid + "\t" + gap_type + "\t" + refid + ":" + gap1 + "-" + gap2 + "\t" + tag + "\t" + queryid + ':' + str(start) + '-' + str(end) + "\t" + str(seq_length) + '\t' + 'with N' + '\n')
+		else:
+			f_log.write(gapid + "\t" + gap_type + "\t" + refid + ":" + gap1 + "-" + gap2 + "\t" + tag + "\t" + queryid + ':' + str(start) + '-' + str(end) + "\t" + str(seq_length) + '\t' + 'pass' + '\n')
+			f_gap.write('>' + gapid + '_' + tag + '_' + region_info[tag] + '_' + gap_type +'_pass_' + str(seq_length) + '\n')
+			f_gap.write(sequence + "\n")
+			seq1 = contig[queryid][int(start)-flank:int(start)]
+			seq2 = contig[queryid][int(end)-1:int(end)+flank-1]
+			f_flank.write('>' + queryid + ':' + str(int(start)-flank) + '-' + str(start) + '_' + gapid + "_1" + '\n' )
+			f_flank.write(seq1 + '\n')
+			f_flank.write('>' + queryid + ':' + str(end) + '-' + str(int(end)+flank) + '_' + gapid + "_2" + '\n' )
+			f_flank.write(seq2 + '\n')
+	else:
+			f_log.write(gapid + "\t" + gap_type + "\t" + refid + ":" + gap1 + "-" + gap2 + "\t" + tag + "\t" + queryid + ':' + str(start) + '-' + str(end) + "\t" + str(seq_length) + '\t' + 'less_equal_0' + '\n')
+f_gaploc.close()
+f_gap.close()
+f_flank.close()
+f_log.close()		
