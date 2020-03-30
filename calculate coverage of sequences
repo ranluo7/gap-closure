@@ -1,0 +1,46 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use File::Basename qw/basename/;
+my ($bed_file,$bam_file,$out_dir,$min_reads)=@ARGV;
+$out_dir.="/" unless $out_dir=~/^\//;
+mkdir($out_dir);
+
+my @bam=split /\./,(basename $bam_file);
+my $tag=$bam[0];
+print $tag;
+my $out_file=$out_dir.$tag.".result.cov";
+open(OUT,">$out_file")||die("Error:1 cannot read the file: $out_file");
+print OUT "Chr\tStart\tEnd\tCoverage\n";
+open(IN,$bed_file)||die("Error:2 cannot read the file: $bed_file.\n");
+while(my $line=<IN>){
+    chomp $line;
+    my @string=split /\t/,$line;
+    #my $id=substr($string[0],1,length($string[0])-1);
+    my $id=$string[0];
+    my $start=$string[1];
+    my $end=$string[2];
+    my $cov_file=$out_dir.$id."_".$start."_".$end.".cov";
+
+    #calculate the gene coverage 
+    my $com="samtools depth -a -r $id:$start-$end $bam_file >$cov_file\n";
+    print "$com\n";
+    system($com);
+    open(COV,$cov_file)||die("Error:3 cannot read the file: $cov_file.\n");
+    my $gene_length=$string[2]-$string[1]+1;
+    my $count=0;
+    while(<COV>){
+        chomp;
+        my ($chr,$pos,$cov)=split /\s+/,$_;
+        if($cov>=$min_reads){
+            $count+=1;
+        }
+    }
+    my $gene_perc=$count/$gene_length;
+    close COV;
+
+    print OUT $string[0]."\t".$string[1]."\t".$string[2]."\t".$gene_perc."\n";
+    unlink $cov_file;
+}
+close IN;
+close OUT;
