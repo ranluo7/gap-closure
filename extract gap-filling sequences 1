@@ -1,3 +1,4 @@
+#usr/bin/python
 ####### extract gap sequences with best alignment set of chains provided by QUAST flanking a gap region 
 filter the gap seq with 'N' and seq less than 0,form a info csv and  output gap seq and flank seq at the same time
 #GRC 1-1000
