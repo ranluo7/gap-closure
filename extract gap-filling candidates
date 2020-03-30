@@ -1,0 +1,159 @@
+#usr/bin/python
+#####    extract gap sequences with best alignment set of chains provided by QUAST spanning a gap region 
+#filter the gap seq with 'N' and seq less than 0,form a info csv and  output gap seq and flank seq at the same time
+import re
+import sys
+import os
+import argparse
+parser = argparse.ArgumentParser(description='manual to this script')
+parser.add_argument('--assembly', type=str, default = None)
+parser.add_argument('--bed', type=str, default = None)
+parser.add_argument('--tag', type=str, default = None)
+parser.add_argument('--gap_out', type=str, default = None)
+parser.add_argument('--flank_out', type=str, default = None)
+parser.add_argument('--flank', type=int, default = None)
+parser.add_argument('--gap_sum', type=str, default = 'log')
+args = parser.parse_args()
+
+assembly=args.assembly
+bed=args.bed
+gap_out=args.gap_out
+flank_out=args.flank_out
+flank = args.flank
+tag=args.tag
+log=args.gap_sum
+
+fa="$HOME/hg38.fa"
+f_assembly = open(assembly,'r').read()
+f_ref = open(fa,'r').read()
+f_gaploc = open(bed,'r')
+f_gap = open(gap_out,'w')
+f_flank = open(flank_out,'w')
+f_log = open(log,'w')
+chrs_c = []
+chrs_r = []
+for line in f_gaploc:
+	queryid = line.split('\t')[3]
+	refid = line.split("\t")[1]
+	chrs_c.append(queryid) 
+	chrs_r.append(refid)
+
+contig = {}
+contigs = re.split(">",f_assembly)
+for line in contigs:
+	line=line.strip()
+	ss = re.split("\n",line)
+	match = re.match("\S+",ss[0])
+	if match:
+		title = ss[0]
+		chr2 = re.search("\S+",title).group()
+		if chr2 in chrs_c:
+			contig[chr2] = ''.join(ss[1:])
+ref = {}
+refs = re.split(">",f_ref)
+for line in refs:
+	line = line.strip()
+	ss = re.split("\n",line)
+	match = re.match("\S+",ss[0])
+	if match:
+		#title = ss[0]
+		#chr2 = re.search("\S+",title).group()
+		chr2 = ss[0].split(' ')[0]
+		if chr2 in chrs_r:
+			ref[chr2] = ''.join(ss[1:])
+region_info={'CHM13':'NA', 'HX1':'EA','AK1':'EA','NA19240':'AFR','NA12878':'EUR','HG00514':'EA','HG00733':'AMR','HG01352':'AMR','NA19434':'AFR','HG02059':'SA','HG03486':'AFR','HG02818':'AFR','HG03807':'SA','ASM101398v1':'EUR','NA24385':'EUR','ASM185674v1':'EA','YRI':'AFR','NA127878':'EUR','ASM311289v1':'AFR','ASM311281v1':
+'AFR','ASM311285v1':'AFR','ASM311317v1':'AMR','ASM311287v1':'AMR','ASM311295v1':'EA','ASM311311v1':'EA','ASM311283v1':'EA','ASM311323v1':'EUR','ASM311321v1':'EUR','ASM311293v1':'EUR','ASM311291v1':'SA','ASM311297v1':'SA','HuRef':'EUR'}
+
+f_gaploc.seek(0)
+for line in f_gaploc:
+	line = line.strip()
+	c = line.split("\t")
+	gapid,refid,gap_pos,queryid,pos,mark,gap_type=c[0],c[1],c[2],c[3],c[4],c[5],c[6]	
+	if mark =="span":
+		g = gap_pos.split(",")
+		gap1,gap2 = g[0],g[1]
+		p = pos.split(',')
+		ref1,ref2,query1,query2,flag1,flag2=p[0],p[1],p[2],p[3],p[4],p[5]	
+		ref_pos1 = min(int(query1),int(query2))
+		ref_pos2 = max(int(query1),int(query2))
+		ref_seq = contig[queryid][ref_pos1:ref_pos2]
+		query_seq1 = ref[refid][int(ref1):int(gap1)]
+		query_seq2 = ref[refid][int(gap2):int(ref2)]#+1-1
+		queryseq_title1 = "flank1"
+		queryseq_title2 = "flank2"
+		ref_fa = 'tmp/' + gapid + "_" + tag + "_ref.fa"
+		f_r = open(ref_fa,'w')
+		f_r.write(">" + gapid + '\n')
+		f_r.write(ref_seq + '\n')
+		f_r.close()
+		query_fa = 'tmp/' + gapid + "_" + tag + "_query.fa"
+		f_q = open(query_fa,'w')
+		f_q.write(">" + queryseq_title1 + '\n')
+		f_q.write(query_seq1 + '\n')
+		f_q.write(">" + queryseq_title2 + '\n')
+		f_q.write(query_seq2 + '\n')
+		f_q.close()
+		tmp_paf = 'tmp/' + gapid + "_" + tag + ".paf"
+		os.system('minimap2 -c -x asm5 --mask-level 0.9 --min-occ 200 -g 100 --score-N 2 --cs -t 8 ' + ref_fa + ' ' + query_fa + ' > '+ tmp_paf)
+		#os.system('rm ref.fa')
+		#os.system('rm query.fa')
+		#os.system('rm tmp.delta')
+		f_paf = open(tmp_paf,'r').read()
+		paf = f_paf.split('\n')
+		tmp = {}
+		tmp[queryseq_title1] = []
+		tmp[queryseq_title2] = []
+		for i in range(len(paf)-1):
+			c = paf[i].split('\t')
+			qid,q_len,qstart,qend,string,rid,r_len,rstart,rend=c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7],c[8]
+			if qid == "flank1":
+				if tmp[queryseq_title1] == []:
+					tmp[queryseq_title1] = c
+				elif int(qend) > int(tmp[queryseq_title1][3]):
+					tmp[queryseq_title1] = c
+			if qid == "flank2":
+				if tmp[queryseq_title2] == []:
+					tmp[queryseq_title2] = c
+				elif int(qstart) < int(tmp[queryseq_title2][2]):
+					tmp[queryseq_title2] = c 
+				
+		if tmp[queryseq_title1]!=[] and tmp[queryseq_title2]!=[]:
+			if tmp[queryseq_title1][4]=='+':
+				start = int(tmp[queryseq_title1][8]) #2:end open -1+1
+				end = int(tmp[queryseq_title2][7]) 
+			elif tmp[queryseq_title1][4] == '-':
+				start = int(tmp[queryseq_title2][8])
+				end = int(tmp[queryseq_title1][7])
+		
+			seq_length = end - start				
+			if seq_length >=1:
+				sequence = ref_seq[start:end]
+				if 'N' in sequence or 'n' in sequence:
+					f_log.write(gapid + "\t" + gap_type + "\t" + refid + ":" + gap1 + "-" + gap2 + '\t' +tag + "\t" + queryid + ':' + str(start+ref_pos1) + '-' + str(end+ref_pos1) + "\t" + str(seq_length) + '\t' + 'with N' + '\n')
+				else:
+					f_log.write(gapid + "\t" + gap_type + "\t" + refid + ":" + gap1 + "-" + gap2 + "\t" + tag + "\t" + queryid + ':' + str(start+ref_pos1) + '-' + str(end+ref_pos1) + "\t" + str(seq_length) + "\t" + 'span' + '\n')
+					f_gap.write('>' + gapid + '_' + tag + '_' + region_info[tag] + '_' + gap_type +'_span_' + str(seq_length) + '\n')
+					f_gap.write(sequence + "\n")
+				seq1 = ref_seq[max(0,int(start)-flank):int(start)]
+				seq2 = ref_seq[int(end):int(end)+flank]
+				f_flank.write('>' + queryid + ':' + str(int(start)+ref_pos1-flank) + '-' + str(start+ref_pos1) + '_' + gapid + '_1' +'\n' ) #
+				f_flank.write(seq1 + '\n')
+				f_flank.write('>' + queryid + ':' + str(end+ref_pos1) + '-' + str(end+ref_pos1+flank) + '_' + gapid + '_2' + '\n' )
+				f_flank.write(seq2 + '\n')
+
+			else:
+				c1 = ','.join(str(i) for i in tmp[queryseq_title1])
+				c2 = ','.join(str(i) for i in tmp[queryseq_title2])
+				f_log.write(gapid + "\t" + gap_type + "\t" + refid + ":" + gap1 + "-" + gap2 + "\t" + tag + "\t" + queryid + ':' + str(start+ref_pos1) + '-' + str(end+ref_pos1) + "\t" + str(seq_length) + "\t" + 'overlap_ref' + "\n")
+
+		else:
+			f_log.write(gapid + "\t" + gap_type + "\t" + refid + ":" + gap1 + "-" + gap2 + "\t" + tag + "\t" + queryid  + "\t" + '' + "\t" + 'Filter' +"\n")
+
+	
+
+
+
+f_gaploc.close()
+f_gap.close()
+f_log.close()
+f_flank.close()	
